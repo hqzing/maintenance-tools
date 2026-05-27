@@ -59,13 +59,11 @@ while true; do
           -e ATOMGIT_EMAIL="$ATOMGIT_EMAIL" \
           swr.cn-north-4.myhuaweicloud.com/harmonybrew/ci-runner:latest \
           python3 auto-migrate.py "$FORMULA"
-          
-        echo "[INFO] 软件包 [ ${FORMULA} ] 搬运流程结束。5 分钟后搬运下一个软件包..."
 
-	# 每次搬运完成后暂停 5 分钟，让 Harmonybrew 流水线有充足的时间生成替代 PR
-	sleep 300
+        echo "[INFO] 软件包 [ ${FORMULA} ] 搬运流程结束。5 秒后搬运下一个软件包..."
     else
         echo "[WARN] 未获取到有效的软件包名称，5 秒后重新摇号..." >&2
-        sleep 5
     fi
+
+    sleep 5
 done
