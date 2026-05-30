@@ -6,6 +6,9 @@ MAX_FAILED=5
 
 rm -rf formula-migration-tool
 git clone https://atomgit.com/Harmonybrew/formula-migration-tool.git
+cd formula-migration-tool
+git reset --hard 4428a7b349b0b78dec3e82688393c78471de236d
+cd ../
 
 echo "[INFO] 开始循环摇号搬运..."
 
