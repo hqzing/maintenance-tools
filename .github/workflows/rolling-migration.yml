@@ -6,6 +6,8 @@ on:
 jobs:
   rolling-migration:
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
     
     strategy:
       fail-fast: false
@@ -33,4 +35,5 @@ jobs:
           ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
           ATOMGIT_USER: ${{ secrets.ATOMGIT_USER }}
           ATOMGIT_EMAIL: ${{ secrets.ATOMGIT_EMAIL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./rolling-migration.sh
