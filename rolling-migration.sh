@@ -75,13 +75,53 @@ is_blacklisted() {
     grep -Fx "$formula" "$BLACKLIST_FILE" &>/dev/null
 }
 
-# 将包名加入黑名单，去重后写回
-add_to_blacklist() {
+# 原子化同步黑名单：下载最新 → 追加 → 上传 → 验证重试
+# 解决 18 个并行 job 间的竞态覆盖问题
+sync_add_to_blacklist() {
     local formula="$1"
-    # 去重追加
-    echo "$formula" >> "$BLACKLIST_FILE"
-    sort -u -o "$BLACKLIST_FILE" "$BLACKLIST_FILE"
-    echo "[INFO] 已将 [ ${formula} ] 加入黑名单。"
+    local max_retry=10
+    local retry=0
+
+    while [ $retry -lt $max_retry ]; do
+        retry=$((retry + 1))
+
+        # 1) 下载最新的黑名单（从 Release 拉取其他并行 job 已写入的条目）
+        download_blacklist
+
+        # 2) 如果已经被其他 job 写入了，直接成功
+        if is_blacklisted "$formula"; then
+            echo "[INFO] ✅ [ ${formula} ] 已被其他并行任务加入黑名单，跳过。"
+            return 0
+        fi
+
+        # 3) 追加并去重
+        echo "$formula" >> "$BLACKLIST_FILE"
+        sort -u -o "$BLACKLIST_FILE" "$BLACKLIST_FILE"
+
+        # 4) 上传覆盖 Release 资产
+        upload_blacklist
+
+        # 5) 验证：重新下载，确认我们的条目确实在 Release 中了
+        local tmp_file
+        tmp_file=$(mktemp)
+        if gh release download "$RELEASE_TAG" \
+            --pattern "$BLACKLIST_FILE" \
+            --repo "$REPO" \
+            --output "$tmp_file" 2>/dev/null; then
+            if grep -Fx "$formula" "$tmp_file" &>/dev/null; then
+                rm -f "$tmp_file"
+                echo "[INFO] ✅ [ ${formula} ] 已成功写入黑名单并验证通过。"
+                return 0
+            fi
+        fi
+        rm -f "$tmp_file"
+
+        echo "[WARN] 黑名单上传可能被其他并行任务覆盖，正在重试 (${retry}/${max_retry})..."
+        sleep 1
+    done
+
+    echo "[ERROR] ❌ 黑名单同步失败 (${formula})，已重试 ${max_retry} 次。" >&2
+    return 1
 }
 
 # ============================================================
@@ -174,10 +214,8 @@ while true; do
 
     # 5f. 检查搬运结果：失败则拉黑并上传
     if [ $DOCKER_EXIT -ne 0 ]; then
-        echo "[ERROR] ❌ 软件包 [ ${FORMULA} ] 构建失败（退出码: ${DOCKER_EXIT}），加入黑名单。"
-        add_to_blacklist "$FORMULA"
-        upload_blacklist
-        echo "[INFO] 黑名单已更新上传。"
+        echo "[ERROR] ❌ 软件包 [ ${FORMULA} ] 构建失败（退出码: ${DOCKER_EXIT}），正在同步加入黑名单..."
+        sync_add_to_blacklist "$FORMULA"
     else
         echo "[INFO] ✅ 软件包 [ ${FORMULA} ] 构建成功！"
     fi
